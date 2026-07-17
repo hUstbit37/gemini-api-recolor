@@ -67,8 +67,9 @@ async def recolor_image(request: RecolorRequest) -> RecolorSuccessResponse:
         client = await get_client()
         model = resolve_model()
     except ClientUnavailable as error:
+        logger.exception("Không dựng được client Gemini (cookie thiếu/hết hạn?)")
         raise RecolorError(
-            401, f"Cookie Gemini thiếu/hết hạn ({error}). Cập nhật .env rồi restart."
+            401, "Dịch vụ chưa sẵn sàng xác thực với Gemini. Vui lòng thử lại sau."
         ) from error
 
     # Pass bytes trực tiếp làm Gemini bỏ qua ảnh và tự vẽ nhà khác — phải ghi ra
@@ -81,31 +82,38 @@ async def recolor_image(request: RecolorRequest) -> RecolorSuccessResponse:
         try:
             response = await client.generate_content(prompt, files=[source_path], model=model)
         except UsageLimitExceeded as error:
-            raise RecolorError(429, "Account hết quota tạo ảnh. Đợi reset rồi thử lại.") from error
+            logger.exception("Hết quota tạo ảnh")
+            raise RecolorError(429, "Hệ thống đang quá tải. Vui lòng thử lại sau.") from error
         except TemporarilyBlocked as error:
-            raise RecolorError(429, "Google tạm chặn account/IP. Dừng một lúc rồi thử lại.") from error
+            logger.exception("Google tạm chặn account/IP")
+            raise RecolorError(429, "Hệ thống đang quá tải. Vui lòng thử lại sau.") from error
         except AuthError as error:
-            raise RecolorError(401, "Cookie Gemini hết hạn — cập nhật .env rồi restart.") from error
+            logger.exception("Cookie Gemini hết hạn")
+            raise RecolorError(
+                401, "Dịch vụ chưa sẵn sàng xác thực với Gemini. Vui lòng thử lại sau."
+            ) from error
         # APIError KHÔNG kế thừa GeminiError (ImageGenerationError kế thừa APIError),
         # nên phải bắt riêng — nếu không sẽ lọt ra ngoài thành 500.
         except ImageGenerationError as error:
-            raise RecolorError(502, f"Gemini không tạo được ảnh: {error}") from error
+            logger.exception("Gemini không tạo được ảnh")
+            raise RecolorError(502, "Không tạo được ảnh. Vui lòng thử lại sau.") from error
         except APIError as error:
-            raise RecolorError(
-                502,
-                f"Gemini lỗi tạm thời ({error}). Thử lại sau, hoặc kiểm tra cookie còn hạn không.",
-            ) from error
+            logger.exception("Gemini lỗi API")
+            raise RecolorError(502, "Không tạo được ảnh. Vui lòng thử lại sau.") from error
         except GeminiError as error:
-            raise RecolorError(502, f"Lỗi Gemini: {error}") from error
+            logger.exception("Lỗi Gemini")
+            raise RecolorError(502, "Không tạo được ảnh. Vui lòng thử lại sau.") from error
         seconds = time.perf_counter() - started
 
         if not response.images:
             text = (response.text or "").strip()
             if any(marker in text.lower() for marker in QUOTA_TEXT_MARKERS):
-                raise RecolorError(429, "Account hết quota tạo ảnh. Đợi reset rồi thử lại.")
-            raise RecolorError(
-                502, f"Gemini trả text thay vì ảnh: {text[:300] or '(không có nội dung)'}"
+                logger.error("Hết quota tạo ảnh (Gemini trả text): %s", text[:500])
+                raise RecolorError(429, "Hệ thống đang quá tải. Vui lòng thử lại sau.")
+            logger.error(
+                "Gemini trả text thay vì ảnh: %s", text[:500] or "(không có nội dung)"
             )
+            raise RecolorError(502, "Không tạo được ảnh. Vui lòng thử lại sau.")
 
         target_dir = OUTPUT_DIR if SAVE_OUTPUT else Path(temp_dir)
         target_dir.mkdir(parents=True, exist_ok=True)

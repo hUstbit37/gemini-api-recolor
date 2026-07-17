@@ -1,6 +1,7 @@
 .venv/
 .env
 output/
+logs/
 __pycache__/
 temp/
 .cache/

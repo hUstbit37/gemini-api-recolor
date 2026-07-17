@@ -29,6 +29,10 @@ MAX_IMAGE_BYTES = int(os.environ.get("GEMINI_MAX_IMAGE_BYTES", str(10 * 1024 * 1
 SAVE_OUTPUT = os.environ.get("GEMINI_SAVE_OUTPUT", "1") not in ("0", "false", "False")
 OUTPUT_DIR = Path(os.environ.get("GEMINI_OUTPUT_DIR", SERVICE_ROOT / "output"))
 
+# Chi tiết lỗi (message gốc + traceback) ghi vào file này; response cho user
+# chỉ chứa message chung chung.
+LOG_FILE = Path(os.environ.get("GEMINI_LOG_FILE", SERVICE_ROOT / "logs" / "service.log"))
+
 PROMPT_TEMPLATE = os.environ.get(
     "GEMINI_PROMPT_TEMPLATE",
     "Edit this photo: repaint ONLY the walls to the exact solid paint color {hex}{name_part}. "
